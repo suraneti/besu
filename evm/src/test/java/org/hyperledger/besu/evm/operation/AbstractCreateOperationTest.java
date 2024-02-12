@@ -23,6 +23,7 @@ import static org.mockito.Mockito.when;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Hash;
 import org.hyperledger.besu.datatypes.Wei;
+import org.hyperledger.besu.evm.Code;
 import org.hyperledger.besu.evm.EVM;
 import org.hyperledger.besu.evm.MainnetEVMs;
 import org.hyperledger.besu.evm.account.Account;
@@ -109,13 +110,18 @@ class AbstractCreateOperationTest {
     }
 
     @Override
-    protected Address targetContractAddress(final MessageFrame frame) {
+    protected Address targetContractAddress(final MessageFrame frame, final Code targetCode) {
       final Account sender = frame.getWorldUpdater().get(frame.getRecipientAddress());
       // Decrement nonce by 1 to normalize the effect of transaction execution
       final Address address =
           Address.contractAddress(frame.getRecipientAddress(), sender.getNonce() - 1L);
       frame.warmUpAddress(address);
       return address;
+    }
+
+    @Override
+    protected Code getCode(final MessageFrame frame, final EVM evm) {
+      return CodeFactory.createCode(Bytes.fromHexString("5fff"), 1, false);
     }
 
     @Override

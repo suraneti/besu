@@ -82,12 +82,6 @@ public abstract class AbstractCreateOperation extends AbstractOperation {
     final MutableAccount account = frame.getWorldUpdater().getAccount(address);
 
     frame.clearReturnData();
-    final long inputOffset = clampedToLong(frame.getStackItem(1));
-    final long inputSize = clampedToLong(frame.getStackItem(2));
-    if (inputSize > maxInitcodeSize) {
-      frame.popStackItems(getStackItemsConsumed());
-      return new OperationResult(cost, ExceptionalHaltReason.CODE_TOO_LARGE);
-    }
 
     if (value.compareTo(account.getBalance()) > 0
         || frame.getDepth() >= 1024
@@ -96,18 +90,23 @@ public abstract class AbstractCreateOperation extends AbstractOperation {
     } else {
       account.incrementNonce();
 
-      final Bytes inputData = frame.readMemory(inputOffset, inputSize);
-      // Never cache CREATEx initcode. The amount of reuse is very low, and caching mostly
-      // addresses disk loading delay, and we already have the code.
-      Code code = evm.getCode(null, inputData);
+      Code code = getCode(frame, evm);
 
-      if (code.isValid() && frame.getCode().getEofVersion() <= code.getEofVersion()) {
-        frame.decrementRemainingGas(cost);
-        spawnChildMessage(frame, code, evm);
-        frame.incrementRemainingGas(cost);
-      } else {
+      if (code == null) {
+        frame.popStackItems(getStackItemsConsumed());
+        return new OperationResult(cost, ExceptionalHaltReason.INVALID_CODE);
+      }
+      if (code.getSize() > maxInitcodeSize) {
+        frame.popStackItems(getStackItemsConsumed());
+        return new OperationResult(cost, ExceptionalHaltReason.CODE_TOO_LARGE);
+      }
+      if (!code.isValid()) {
         fail(frame);
       }
+
+      frame.decrementRemainingGas(cost);
+      spawnChildMessage(frame, code, evm);
+      frame.incrementRemainingGas(cost);
     }
 
     return new OperationResult(cost, null);
@@ -127,7 +126,9 @@ public abstract class AbstractCreateOperation extends AbstractOperation {
    * @param frame the frame
    * @return the address
    */
-  protected abstract Address targetContractAddress(MessageFrame frame);
+  protected abstract Address targetContractAddress(MessageFrame frame, Code targetCode);
+
+  protected abstract Code getCode(MessageFrame frame, EVM evm);
 
   private void fail(final MessageFrame frame) {
     final long inputOffset = clampedToLong(frame.getStackItem(1));
@@ -140,7 +141,7 @@ public abstract class AbstractCreateOperation extends AbstractOperation {
   private void spawnChildMessage(final MessageFrame parent, final Code code, final EVM evm) {
     final Wei value = Wei.wrap(parent.getStackItem(0));
 
-    final Address contractAddress = targetContractAddress(parent);
+    final Address contractAddress = targetContractAddress(parent, code);
 
     final long childGasStipend =
         gasCalculator().gasAvailableForChildCreate(parent.getRemainingGas());
@@ -159,6 +160,7 @@ public abstract class AbstractCreateOperation extends AbstractOperation {
         .apparentValue(value)
         .code(code)
         .completer(child -> complete(parent, child, evm))
+        .isInitCode(true)
         .build();
 
     parent.setState(MessageFrame.State.CODE_SUSPENDED);
@@ -168,7 +170,9 @@ public abstract class AbstractCreateOperation extends AbstractOperation {
     frame.setState(MessageFrame.State.CODE_EXECUTING);
 
     Code outputCode =
-        CodeFactory.createCode(childFrame.getOutputData(), evm.getMaxEOFVersion(), true);
+        (childFrame.getCreatedCode() != null)
+            ? childFrame.getCreatedCode()
+            : CodeFactory.createCode(childFrame.getOutputData(), evm.getMaxEOFVersion(), true);
     frame.popStackItems(getStackItemsConsumed());
 
     if (outputCode.isValid()) {
