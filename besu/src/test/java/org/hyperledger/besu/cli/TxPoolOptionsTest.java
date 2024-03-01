@@ -17,6 +17,7 @@ package org.hyperledger.besu.cli;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hyperledger.besu.cli.BesuCommandTest.GENESIS_WITH_ZERO_BASE_FEE_MARKET;
+import static org.hyperledger.besu.cli.CommandTestAbstract.GENESIS_WITH_FIXED_BASE_FEE_MARKET;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.verify;
@@ -118,6 +119,27 @@ public class TxPoolOptionsTest extends CommandTestAbstract {
     assertThat(commandOutput.toString(UTF_8)).isEmpty();
     assertThat(commandErrorOutput.toString(UTF_8))
         .contains("Price bump option is not compatible with zero base fee market");
+  }
+
+  @Test
+  public void txpoolPriceBumpKeepItsValueIfSetEvenWhenMinGasPriceIsSetWithFixedBaseFee()
+      throws IOException {
+    final Path genesisFile = createFakeGenesisFile(GENESIS_WITH_FIXED_BASE_FEE_MARKET);
+    parseCommand(
+        "--genesis-file",
+        genesisFile.toString(),
+        "--min-gas-price",
+        "1",
+        "--tx-pool-price-bump",
+        "10");
+    verify(mockControllerBuilder)
+        .transactionPoolConfiguration(transactionPoolConfigCaptor.capture());
+
+    final Percentage priceBump = transactionPoolConfigCaptor.getValue().getPriceBump();
+    assertThat(priceBump).isEqualTo(Percentage.fromInt(10));
+
+    assertThat(commandOutput.toString(UTF_8)).isEmpty();
+    assertThat(commandErrorOutput.toString(UTF_8)).isEmpty();
   }
 
   @Test

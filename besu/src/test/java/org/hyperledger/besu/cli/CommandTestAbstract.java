@@ -170,6 +170,9 @@ public abstract class CommandTestAbstract {
   protected static final JsonObject GENESIS_WITH_ZERO_BASE_FEE_MARKET =
       new JsonObject().put("config", new JsonObject().put("zeroBaseFee", true));
 
+  protected static final JsonObject GENESIS_WITH_FIXED_BASE_FEE_MARKET =
+      new JsonObject().put("config", new JsonObject().put("fixedBaseFee", true));
+
   protected final PrintStream originalOut = System.out;
   protected final PrintStream originalErr = System.err;
   protected final ByteArrayOutputStream commandOutput = new ByteArrayOutputStream();
